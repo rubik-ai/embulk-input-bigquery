@@ -53,6 +53,9 @@ in:
   sql_erb: 'SELECT price,category_id FROM [ecsite.products_<%= params["date"].strftime("%Y%m")  %>] GROUP BY category_id'
   erb_params:
     date: "require 'date'; (Date.today - 1)"
+  incremental: true
+  incremental_column: category_id
+  incremental_column_datetime_format: '%Y-%m-%d %H:%M:%S %Z'  # when using datetime/time/timestamp column 
   columns:
     - {name: price, type: long}
     - {name: category_id, type: long}

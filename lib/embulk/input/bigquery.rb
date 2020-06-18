@@ -39,6 +39,10 @@ module Embulk
           keyfile: config.param(:keyfile, LocalFile, nil),
           sql: sql,
           params: params,
+          incremental_column: config[:incremental_column],
+          incremental: config[:incremental],
+          last_record: config[:last_record],
+          incremental_column_datetime_format: config[:incremental_column_datetime_format],
           option: {
             max: config[:max],
             cache: config[:cache],
@@ -59,14 +63,12 @@ module Embulk
         task[:columns].each_with_index do |c, i|
           columns << Column.new(i, c['name'], c['type'].to_sym)
         end
-
         resume(task, columns, 1, &control)
       end
 
       def self.resume(task, columns, count, &control)
         task_reports = yield(task, columns, count)
-
-        next_config_diff = {}
+        next_config_diff = task_reports.first
       end
 
       def run
@@ -74,35 +76,66 @@ module Embulk
         params = @task[:params]
         option = keys_to_sym(@task[:option])
 
-        rows = if @task[:job_id].nil?
+        if @task['incremental'] && @task["last_record"] != nil
+            if  @task["last_record"].class == Integer || @task["last_record"].class == Float ||  @task["last_record"].class == Fixnum
+              last_record_value = @task["last_record"].to_s
+              sql = "SELECT * FROM ( " + @task[:sql] + " ) WHERE "+ @task[:incremental_column] + " > " + last_record_value  + " ORDER BY " + @task[:incremental_column] +" ASC"
+            elsif @task["last_record"].class ==  String
+              if @task[:incremental_column_datetime_format] != nil
+                  sql = 'SELECT * FROM ( ' + @task[:sql] + ' ) WHERE '+ @task[:incremental_column] +' > cast(\'' +  Time.parse(@task["last_record"]).utc.strftime(@task[:incremental_column_datetime_format]) +'\' AS TIMESTAMP ) ORDER BY '+ @task[:incremental_column] +' ASC'
+              else
+                  sql = 'SELECT * FROM ( ' + @task[:sql] + ' ) WHERE '+ @task[:incremental_column] +' > ' + @task[:last_record]  +' ORDER BY '+ @task[:incremental_column] +' ASC'
+              end
+            else
+              raise "unsupported type  #{@task["last_record"].class} in incremental column"
+            end
+        elsif @task['incremental'] && @task["last_record"] == nil
+            sql = "SELECT * FROM ( " + @task[:sql] + ") ORDER BY " + @task[:incremental_column] + " ASC"
+        else
+            sql = task[:sql]
+        end
+        latest_time_series = nil
+        rows = if @task[:job_id]!=nil
                  query_option = option.dup
                  query_option.delete(:location)
-
-                 bq.query(@task[:sql], **query_option) do |job_updater|
+                 bq.query(sql, **query_option) do |job_updater|
                    job_updater.location = option[:location] if option[:location]
                  end
                else
-                 job_option = {}
-                 job_option[:location] = option[:location] if option[:location]
-
-                 bq.job(@task[:job_id], **job_option).query_results(max: option[:max])
+                   query_option = option.dup
+                   query_option.delete(:max)
+                   query_option.delete(:location)
+                   job = bq.query_job(sql, **query_option) do |query|
+                     query.location = option[:location] if option[:location]
+                   end
+                   job.wait_until_done!
+                   job.query_results
                end
 
+        Embulk.logger.info "Total: Rows=#{rows.all.count}"
         @task[:columns] = values_to_sym(@task[:columns], 'name')
-
         rows.all do |row|
           columns = []
+          column_name = ":"+ @task[:incremental_column]
+          time = row[eval(column_name)]
           @task[:columns].each do |c|
             val = row[c['name'].to_sym]
             val = eval(c['eval'], binding) if c['eval']
-
             columns << as_serializable(val)
           end
-
           @page_builder.add(columns)
+          latest_time_series = [
+                        latest_time_series,
+                        time,
+                      ].compact.max
         end
         @page_builder.finish
-        {}
+        if rows.all.count == 0
+           task_report = {"last_record" => @task[:last_record]}
+        else
+           task_report = {"last_record" => latest_time_series}
+        end
+        task_report
       end
 
       def self.determine_columns_by_query_results(sql, option, bigquery_client)

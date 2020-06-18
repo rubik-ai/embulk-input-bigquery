@@ -1,0 +1,26 @@
+in:
+  type: bigquery
+  path: dataos://my-bigquery
+  keyfile: 'credentials.json'
+  sql: 'SELECT * FROM cmorq-data.ltc.receiver_april ORDER BY block_time LIMIT 100'
+  max: 20
+  incremental: true
+  incremental_column: block_time
+  incremental_column_datetime_format: '%Y-%m-%d %H:%M:%S %Z'
+  columns:
+    - {name: "block_id", type: "long"}
+    - {name: "block_hash", type: "string"}
+    - {name: "transaction_address", type: "string"}
+    - {name: "receiver_entity", type: "string"}
+    - {name: "receiver_amount", type: "double"}
+    - {name: "receiver_asset", type: "string"}
+    - {name: "type", type: "string"}
+    - {name: "block_time", type: "timestamp"}
+
+out:
+  type: abfss_parquet
+  path: dataos://myabfss/out/bigquery
+  compression_codec: snappy
+  auth_method: basic
+  secret_access_key: <secret_access_key>
+
