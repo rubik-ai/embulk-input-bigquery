@@ -6,11 +6,11 @@ require 'embulk/input/bigquery/version'
 Gem::Specification.new do |spec|
   spec.name          = 'embulk-input-bigquery'
   spec.version       = Embulk::Input::Bigquery::VERSION
-  spec.authors       = ['potato2003', 'Naotoshi Seo', 'Takeru Narita']
-  spec.email         = ['potato2003@gmail.com', 'sonots@gmail.com', 'naritano77@gmail.com']
+  spec.authors       = ['Piyush Upadhyay']
+  spec.email         = ['piyush@rubik.ai']
   spec.description   = 'embulk input plugin from bigquery.'
   spec.summary       = 'Embulk input plugin from bigquery.'
-  spec.homepage      = 'https://github.com/medjed/embulk-input-bigquery'
+  spec.homepage      = 'https://github.com/rubik-ai/embulk-input-bigquery.git'
   spec.license       = 'MIT'
 
   spec.files         = `git ls-files`.split($INPUT_RECORD_SEPARATOR)
